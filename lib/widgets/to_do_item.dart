@@ -1,16 +1,19 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:todoapp/model/todo.dart';
 
 class ToDoItem extends StatelessWidget {
+  final String useremail;
   final ToDo todo;
-  final onToDoChanged;
-  final onDeleteItem;
+  final bool changeIsDone;
+  //final onDeleteItem;
 
   const ToDoItem({
     Key? key,
+    required this.useremail,
     required this.todo,
-    required this.onToDoChanged,
-    required this.onDeleteItem,
+    required this.changeIsDone,
+    //required this.onDeleteItem,
   }) : super(key: key);
 
   @override
@@ -19,7 +22,10 @@ class ToDoItem extends StatelessWidget {
       margin: const EdgeInsets.only(bottom: 20),
       child: ListTile(
         onTap: () {
-          onToDoChanged(todo);
+          final docToDo = FirebaseFirestore.instance.collection(useremail).doc(todo.id);
+          docToDo.update({
+            'isDone': changeIsDone
+          });
         },
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(20),
@@ -48,7 +54,9 @@ class ToDoItem extends StatelessWidget {
             iconSize: 18,
             icon: Icon(Icons.delete),
             onPressed: () {
-              onDeleteItem(todo.id);
+              //onDeleteItem(todo.id);
+              final docToDo = FirebaseFirestore.instance.collection(useremail).doc(todo.id);
+              docToDo.delete();
             },
           ),
         ),

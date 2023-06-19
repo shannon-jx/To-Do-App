@@ -1,25 +1,31 @@
-import 'dart:math';
-
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:todoapp/model/todo.dart';
 import 'package:todoapp/widgets/to_do_item.dart';
 
 class HomePage extends StatefulWidget {
-  HomePage({super.key});
+  const HomePage({super.key});
 
   @override
   State<HomePage> createState() => _HomePageState();
 }
 
 class _HomePageState extends State<HomePage> {
-  final toDoList = ToDo.toDoList();
+  final useremail = FirebaseAuth.instance.currentUser?.email;
+  List<ToDo> toDoList = ToDo.toDoList();
   List<ToDo> _foundToDo = [];
   final _addController = TextEditingController();
+  final _searchController = TextEditingController();
 
   @override
   void initState() {
     _foundToDo = toDoList;
     super.initState();
+  }
+
+  void signUserOut() {
+    FirebaseAuth.instance.signOut();
   }
 
   @override
@@ -42,7 +48,7 @@ class _HomePageState extends State<HomePage> {
               left: 30,
               bottom: 90,
             ),
-            child: const Align(
+            child: Align(
               alignment: Alignment.bottomLeft,
               child: Text(
                 'Welcome Back, Shannon.',
@@ -69,28 +75,40 @@ class _HomePageState extends State<HomePage> {
                 ),
                 searchBox(),
                 Expanded(
-                  child: ListView(
-                    children: [
-                      Container(
-                        margin: const EdgeInsets.only(
-                          top: 70,
-                          bottom: 20,
-                        ),
-                        child: const Text(
-                          "Tasks for Today: ",
-                          style: TextStyle(
-                            fontSize: 30,
-                            fontWeight: FontWeight.w500,
-                          ),
-                        ),
-                      ),
-                      for (ToDo todoo in _foundToDo.reversed)
-                        ToDoItem(
-                          todo: todoo,
-                          onToDoChanged: _handleChange,
-                          onDeleteItem: _handleDelete,
-                        ),
-                    ],
+                  child: StreamBuilder<List<ToDo>>(
+                    stream: readData(),
+                    builder: (context, snapshot) {
+                      if (snapshot.hasError) {
+                        return Text('ERROR');
+                      } else if (snapshot.hasData) {
+                        toDoList = snapshot.data!;
+                        return ListView(
+                          children: [
+                            Container(
+                              margin: const EdgeInsets.only(
+                                top: 70,
+                                bottom: 20,
+                              ),
+                              child: const Text(
+                                "Tasks for Today: ",
+                                style: TextStyle(
+                                  fontSize: 30,
+                                  fontWeight: FontWeight.w500,
+                                ),
+                              ),
+                            ),
+                            for (ToDo todoo in _foundToDo.reversed)
+                              ToDoItem(
+                                useremail: useremail!,
+                                todo: todoo,
+                                changeIsDone: !todoo.isDone,
+                              ),
+                          ],
+                        );
+                      } else {
+                        return Center(child: CircularProgressIndicator());
+                      }
+                    }
                   ),
                 )
               ],
@@ -138,7 +156,12 @@ class _HomePageState extends State<HomePage> {
                 child: FloatingActionButton(
                   elevation: 30,
                   onPressed: () {
-                    _addItem(_addController.text);
+                    ToDo item = ToDo(
+                      id: DateTime.now().millisecondsSinceEpoch.toString(),
+                      toDoText: _addController.text
+                    );
+                    addItem(item: item);
+                    _addController.clear();
                   },
                   backgroundColor: Colors.deepPurpleAccent,
                   child: const Text(
@@ -158,30 +181,30 @@ class _HomePageState extends State<HomePage> {
 
   AppBar appBar() {
     return AppBar(
+      automaticallyImplyLeading: false,
       elevation: 0,
       backgroundColor: Colors.deepPurpleAccent,
       title: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          const Icon(
-            Icons.menu_rounded,
-            color: Colors.white,
-            size: 30,
-          ),
-          const Text(
-            'To Do List',
-            style: TextStyle(
-              color: Colors.white,
-              fontSize: 22,
+          ClipRRect(
+            borderRadius: BorderRadius.circular(20.0),
+            child: Image(
+              image: AssetImage(
+                'assets/avatar.jpg',
+              ),
+              height: 35.0,
             ),
           ),
-          SizedBox(
-            height: 40,
-            width: 40,
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(20),
-              child: Image.asset('assets/avatar.jpg'),
+          Image(
+            image: AssetImage(
+              'assets/logo.png',
             ),
+            height: 25.0,
+          ),
+          IconButton(
+            icon: Icon(Icons.logout, color: Colors.black,),
+            onPressed: signUserOut,
           )
         ],
       ),
@@ -197,6 +220,7 @@ class _HomePageState extends State<HomePage> {
       ),
       child: TextField(
         onChanged: (value) => _filter(value),
+        controller: _searchController,
         decoration: const InputDecoration(
           prefixIcon: Icon(
             Icons.search,
@@ -213,26 +237,24 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
-  void _handleChange(ToDo todo) {
-    setState(() {
-      todo.isDone = !todo.isDone;
-    });
+  Future addItem({required ToDo item}) async {
+    toDoList.add(item);
+    final docToDo = FirebaseFirestore.instance.collection(useremail!).doc(item.id);
+
+    final json = {
+      'id': item.id,
+      'toDoText': item.toDoText,
+      'isDone' : item.isDone,
+    };
+    
+    await docToDo.set(json);
   }
 
-  void _handleDelete(String id) {
-    setState(() {
-      toDoList.removeWhere((item) => item.id == id);
-    });
-  }
-
-  void _addItem(String desc) {
-    setState(() {
-      toDoList.add(ToDo(
-          id: DateTime.now().millisecondsSinceEpoch.toString(),
-          toDoText: desc));
-    });
-    _addController.clear();
-  }
+  Stream<List<ToDo>> readData() => FirebaseFirestore.instance
+    .collection(useremail!)
+    .snapshots()
+    .map((snapshot) => 
+      snapshot.docs.map((doc) => ToDo.fromJson(doc.data())).toList());
 
   void _filter(String keyword) {
     List<ToDo> results = [];
